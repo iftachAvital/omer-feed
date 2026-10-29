@@ -1,0 +1,10 @@
+{
+  "name": "מחשבון תערובת",
+  "short_name": "תערובת",
+  "lang": "he",
+  "dir": "rtl",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#f6f5f1",
+  "theme_color": "#2f6b3a"
+}

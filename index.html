@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="תערובת">
+<link rel="manifest" href="manifest.json">
+<title>מחשבון תערובת</title>
+<style>
+  :root { --bg:#f6f5f1; --card:#fff; --ink:#1d1d1b; --mute:#6b6b66; --line:#e2e0d8; --acc:#2f6b3a; --warn:#b4541a; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#161614; --card:#20201d; --ink:#ecebe6; --mute:#9a9a92; --line:#34342f; --acc:#6fbf7c; --warn:#e8915a; } }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.5 -apple-system, "Segoe UI", Arial, sans-serif; }
+  main { max-width:1000px; margin:0 auto; padding:16px; }
+  h1 { font-size:22px; margin:8px 0 16px; }
+  h2 { font-size:17px; margin:0 0 10px; }
+  section { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:16px; margin-bottom:16px; overflow-x:auto; }
+  table { border-collapse:collapse; width:100%; }
+  th, td { border-bottom:1px solid var(--line); padding:6px 8px; text-align:right; white-space:nowrap; }
+  th { color:var(--mute); font-weight:600; font-size:13px; }
+  input, select { font:inherit; color:inherit; background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:4px 6px; width:100%; min-width:70px; }
+  button { font:inherit; border:1px solid var(--acc); background:var(--acc); color:#fff; border-radius:6px; padding:6px 12px; cursor:pointer; }
+  button.ghost { background:transparent; color:var(--acc); }
+  button.x { border:none; background:none; color:var(--warn); padding:2px 6px; }
+  .row { display:flex; gap:10px; flex-wrap:wrap; align-items:end; margin-bottom:10px; }
+  .row label { display:flex; flex-direction:column; font-size:13px; color:var(--mute); }
+  .num { font-variant-numeric:tabular-nums; }
+  .neg { color:var(--warn); font-weight:600; }
+  .hint { color:var(--mute); font-size:13px; margin:6px 0 0; }
+  .total td { font-weight:700; }
+</style>
+</head>
+<body>
+<main>
+<h1>מחשבון תערובת למדגר</h1>
+
+<section>
+  <h2>1. מדגר: אפרוחים בכל לול</h2>
+  <div class="row">
+    <label>תאריך תחילת מדגר<input type="date" id="start"></label>
+  </div>
+  <table id="chicks"></table>
+</section>
+
+<section>
+  <h2>2. תוכנית הזנה (גרם לעוף)</h2>
+  <table id="plan"></table>
+  <p class="hint">בפיטום אין כמות לעוף. נספר רק כמה התקבל, והחלוקה היא לפי מספר האפרוחים.</p>
+</section>
+
+<section>
+  <h2>3. כמה להזמין (טון)</h2>
+  <table id="need"></table>
+</section>
+
+<section>
+  <h2>4. משאית בדרך: איך לחלק</h2>
+  <div class="row">
+    <label>תערובת<select id="sFeed"></select></label>
+    <label>כמות במשאית (טון)<input type="number" step="0.1" id="sTons"></label>
+  </div>
+  <table id="split"></table>
+  <p class="hint">החלוקה משלימה לכל לול את מה שחסר לו לפי מספר העופות. אם יש עודף, הוא מתחלק לפי מספר האפרוחים.</p>
+</section>
+
+<section>
+  <h2>5. קבלת תערובת (מתעודת המשלוח)</h2>
+  <div class="row">
+    <label>תאריך<input type="date" id="dDate"></label>
+    <label>מס' תעודה<input id="dNote"></label>
+    <label>תערובת<select id="dFeed"></select></label>
+    <label>סילו (1–12)<input type="number" min="1" max="12" id="dSilo"></label>
+    <label>טון<input type="number" step="0.001" id="dTons"></label>
+    <button id="dAdd">הוסף</button>
+  </div>
+  <p class="hint">מהטבלה התחתונה בתעודה: שורה לכל סילו. לול 1 = סילו 1–2, לול 2 = סילו 3–4, וכן הלאה.</p>
+  <table id="deliv"></table>
+</section>
+
+<section>
+  <h2>6. מצב לפי לול: התקבל מול צריך (טון)</h2>
+  <table id="status"></table>
+</section>
+
+<section>
+  <h2>גיבוי</h2>
+  <div class="row">
+    <button class="ghost" id="exp">ייצוא לקובץ</button>
+    <label style="flex-direction:row;align-items:center;gap:6px"><button class="ghost" id="impBtn">ייבוא מקובץ</button><input type="file" id="imp" accept=".json" hidden></label>
+    <button class="ghost" id="reset">מדגר חדש (מחיקת קבלות)</button>
+  </div>
+  <p class="hint">הנתונים נשמרים בדפדפן הזה בלבד. כדאי לייצא גיבוי מדי פעם.</p>
+</section>
+</main>
+
+<script>
+const HOUSES = 6, KEY = 'omer-feed-v1';
+const DEFAULT = {
+  start: '', chicks: [0,0,0,0,0,0],
+  plan: [
+    { code:'200110', name:'פרי סטרטר', days:'0-10',  g:350 },
+    { code:'200210', name:'סטרטר',     days:'11-15', g:500 },
+    { code:'200211', name:'סטרטר',     days:'16-24', g:750 },
+    { code:'200310', name:'גידול',     days:'25-30', g:1100 },
+    { code:'200410', name:'פיטום',     days:'31-שיווק', g:null },
+  ],
+  deliveries: [],
+};
+let S;
+try { S = JSON.parse(localStorage.getItem(KEY)) || structuredClone(DEFAULT); } catch { S = structuredClone(DEFAULT); }
+const save = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch {} };
+const $ = id => document.getElementById(id);
+const t = x => x.toFixed(2);
+const houseOf = silo => Math.ceil(silo / 2);
+const totalChicks = () => S.chicks.reduce((a, b) => a + b, 0);
+const feedLabel = f => `${f.name} ${f.code}`;
+
+function need(f, h) { return f.g == null ? null : S.chicks[h] * f.g / 1e6; }
+function received(code, h) {
+  return S.deliveries.filter(d => d.code === code && houseOf(d.silo) === h + 1).reduce((a, d) => a + d.tons, 0);
+}
+
+// Tons per house for an incoming load: fill each house's shortfall first, any excess by chick share.
+// Finisher has no per-bird need, so its "need" is each house's chick share of everything received so far plus this load.
+function suggest(f, tons) {
+  const share = S.chicks.map(c => totalChicks() ? c / totalChicks() : 1 / HOUSES);
+  const recv = S.chicks.map((_, h) => received(f.code, h));
+  let gap;
+  if (f.g == null) {
+    const total = recv.reduce((a, b) => a + b, 0) + tons;
+    gap = share.map((s, h) => Math.max(0, total * s - recv[h]));
+  } else {
+    gap = S.chicks.map((_, h) => Math.max(0, need(f, h) - recv[h]));
+  }
+  const gapSum = gap.reduce((a, b) => a + b, 0);
+  if (gapSum >= tons) return gap.map(g => gapSum ? tons * g / gapSum : 0);
+  return gap.map((g, h) => g + (tons - gapSum) * share[h]);
+}
+
+function feedOptions(sel) {
+  const v = sel.value;
+  sel.innerHTML = S.plan.map(f => `<option value="${f.code}">${feedLabel(f)}</option>`).join('');
+  if (v) sel.value = v;
+}
+
+// Inputs are drawn once (load, import, reset) so typing never replaces the field being typed in.
+function render() {
+  $('start').value = S.start;
+
+  $('chicks').innerHTML = `<tr><th>לול</th><th>סילואים</th><th>אפרוחים</th></tr>` +
+    S.chicks.map((c, h) => `<tr><td>לול ${h + 1}</td><td>${2 * h + 1}, ${2 * h + 2}</td><td><input type="number" inputmode="numeric" min="0" data-h="${h}" value="${c || ''}"></td></tr>`).join('') +
+    `<tr class="total"><td>סה"כ</td><td></td><td class="num" id="chTotal"></td></tr>`;
+
+  $('plan').innerHTML = `<tr><th>תערובת</th><th>קוד</th><th>גיל (ימים)</th><th>גרם לעוף</th></tr>` +
+    S.plan.map((f, i) => `<tr><td>${f.name}</td><td>${f.code}</td><td>${f.days}</td><td>${f.g == null ? 'לפי הצורך' : `<input type="number" inputmode="numeric" data-p="${i}" value="${f.g}">`}</td></tr>`).join('');
+
+  renderOutputs();
+}
+
+function renderOutputs() {
+  $('chTotal').textContent = totalChicks().toLocaleString();
+
+  $('need').innerHTML = `<tr><th>תערובת</th>${S.chicks.map((_, h) => `<th>לול ${h + 1}</th>`).join('')}<th>סה"כ להזמין</th><th>התקבל</th><th>נשאר</th></tr>` +
+    S.plan.map(f => {
+      const recvTotal = S.chicks.reduce((a, _, h) => a + received(f.code, h), 0);
+      if (f.g == null) return `<tr><td>${feedLabel(f)}</td>${S.chicks.map(() => '<td>—</td>').join('')}<td>לפי הצורך</td><td class="num">${t(recvTotal)}</td><td>—</td></tr>`;
+      const tot = S.chicks.reduce((a, _, h) => a + need(f, h), 0);
+      const left = tot - recvTotal;
+      return `<tr><td>${feedLabel(f)}</td>${S.chicks.map((_, h) => `<td class="num">${t(need(f, h))}</td>`).join('')}<td class="num"><b>${t(tot)}</b></td><td class="num">${t(recvTotal)}</td><td class="num ${left < 0 ? 'neg' : ''}">${t(left)}</td></tr>`;
+    }).join('');
+
+  feedOptions($('sFeed')); feedOptions($('dFeed'));
+  renderSplit();
+
+  $('deliv').innerHTML = `<tr><th>תאריך</th><th>תעודה</th><th>תערובת</th><th>סילו</th><th>לול</th><th>טון</th><th></th></tr>` +
+    S.deliveries.map((d, i) => {
+      const f = S.plan.find(p => p.code === d.code);
+      return `<tr><td>${d.date}</td><td>${d.note}</td><td>${f ? feedLabel(f) : d.code}</td><td>${d.silo}</td><td>${houseOf(d.silo)}</td><td class="num">${d.tons.toFixed(3)}</td><td><button class="x" data-del="${i}">✕</button></td></tr>`;
+    }).join('');
+
+  $('status').innerHTML = `<tr><th>תערובת</th>${S.chicks.map((_, h) => `<th>לול ${h + 1}</th>`).join('')}</tr>` +
+    S.plan.map(f => `<tr><td>${feedLabel(f)}</td>${S.chicks.map((_, h) => {
+      const r = received(f.code, h);
+      if (f.g == null) return `<td class="num">${t(r)}</td>`;
+      const n = need(f, h);
+      return `<td class="num ${r > n + 0.05 ? 'neg' : ''}">${t(r)} / ${t(n)}</td>`;
+    }).join('')}</tr>`).join('');
+}
+
+function renderSplit() {
+  const f = S.plan.find(p => p.code === $('sFeed').value);
+  const tons = parseFloat($('sTons').value);
+  if (!f || !(tons > 0)) { $('split').innerHTML = ''; return; }
+  const s = suggest(f, tons);
+  $('split').innerHTML = `<tr><th>לול</th><th>סילואים</th><th>לפרוק (טון)</th></tr>` +
+    s.map((x, h) => `<tr><td>לול ${h + 1}</td><td>${2 * h + 1}, ${2 * h + 2}</td><td class="num">${t(x)}</td></tr>`).join('') +
+    `<tr class="total"><td>סה"כ</td><td></td><td class="num">${t(tons)}</td></tr>`;
+}
+
+document.addEventListener('input', e => {
+  const el = e.target;
+  if (el.dataset.h != null) { S.chicks[+el.dataset.h] = +el.value || 0; save(); renderOutputs(); }
+  else if (el.dataset.p != null) { S.plan[+el.dataset.p].g = +el.value || 0; save(); renderOutputs(); }
+  else if (el.id === 'start') { S.start = el.value; save(); }
+  else if (el.id === 'sTons' || el.id === 'sFeed') renderSplit();
+});
+$('sFeed').addEventListener('change', renderSplit);
+
+$('dAdd').onclick = () => {
+  const silo = parseInt($('dSilo').value), tons = parseFloat($('dTons').value);
+  if (!(silo >= 1 && silo <= 12) || !(tons > 0)) { alert('צריך סילו 1–12 וכמות בטון'); return; }
+  S.deliveries.push({ date: $('dDate').value, note: $('dNote').value.trim(), code: $('dFeed').value, silo, tons });
+  save(); $('dSilo').value = ''; $('dTons').value = ''; render(); $('dSilo').focus();
+};
+document.addEventListener('click', e => {
+  const i = e.target.dataset.del;
+  if (i != null && confirm('למחוק את השורה?')) { S.deliveries.splice(+i, 1); save(); render(); }
+});
+
+$('exp').onclick = () => {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(S, null, 1)], { type: 'application/json' }));
+  a.download = `תערובת-${new Date().toISOString().slice(0, 10)}.json`;
+  a.click();
+};
+$('impBtn').onclick = () => $('imp').click();
+$('imp').onchange = async e => {
+  try { S = JSON.parse(await e.target.files[0].text()); save(); render(); } catch { alert('הקובץ לא תקין'); }
+};
+$('reset').onclick = () => {
+  if (confirm('למחוק את כל הקבלות ולהתחיל מדגר חדש? כדאי לייצא גיבוי קודם.')) { S.deliveries = []; S.start = ''; save(); render(); }
+};
+
+$('dDate').value = new Date().toISOString().slice(0, 10);
+render();
+</script>
+</body>
+</html>
